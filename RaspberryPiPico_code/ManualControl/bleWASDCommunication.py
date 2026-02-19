@@ -3,7 +3,6 @@ import asyncio
 import os
 import sys
 
-
 try:
     if sys.platform == 'win32':
         import msvcrt
