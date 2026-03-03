@@ -177,8 +177,8 @@ class EvdevBackend(InputBackend):
         # self._dev.grab()  <-- This is what freezes your trackpad/mouse
         
         keymap = {
-            ecodes.KEY_W: 'w', ecodes.KEY_A: 'a', 
-            ecodes.KEY_S: 's', ecodes.KEY_D: 'd',
+            ecodes.KEY_W: 's', ecodes.KEY_A: 'a', 
+            ecodes.KEY_S: 'w', ecodes.KEY_D: 'd',
             ecodes.KEY_Q: 'q', ecodes.KEY_ESC: 'q'
         }
 

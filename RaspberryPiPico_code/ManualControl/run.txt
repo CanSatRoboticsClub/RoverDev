@@ -1,0 +1,1 @@
+sudo /home/dylenthomas/miniconda3/envs/ble/bin/python bleLinuxVer.py
