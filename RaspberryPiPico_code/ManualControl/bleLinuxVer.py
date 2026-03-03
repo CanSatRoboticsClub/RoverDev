@@ -123,10 +123,12 @@ class EvdevBackend(InputBackend):
         self._dev = None
 
     def _pick_keyboard(self):
-        from evdev import InputDevice, list_devices, ecodes  # type: ignore
-
+        from evdev import InputDevice, list_devices, ecodes
+        
         paths = list_devices()
         candidates = []
+        
+        # We look for devices that have at least the WASD keys
         need = {ecodes.KEY_W, ecodes.KEY_A, ecodes.KEY_S, ecodes.KEY_D}
 
         for path in paths:
@@ -135,9 +137,6 @@ class EvdevBackend(InputBackend):
                 caps = dev.capabilities(verbose=False)
                 keys = set(caps.get(ecodes.EV_KEY, []))
                 if need.issubset(keys):
-                    # Ignore obvious non-keyboards when possible
-                    if "power" in (dev.name or "").lower():
-                        continue
                     candidates.append(dev)
                 else:
                     dev.close()
@@ -147,75 +146,59 @@ class EvdevBackend(InputBackend):
         if not candidates:
             return None
 
-        # Prefer external USB keyboards if present, else first match
-        def score(d):
-            name = (d.name or "").lower()
-            sc = 0
-            if "keyboard" in name:
-                sc += 3
-            if "usb" in name:
-                sc += 2
-            if "bluetooth" in name:
-                sc += 1
-            return sc
-
-        candidates.sort(key=score, reverse=True)
-        return candidates[0]
+        # --- Interactive Selection ---
+        print("\n--- Available Keyboards ---")
+        for i, dev in enumerate(candidates):
+            print(f"[{i}] {dev.path} | {dev.name} | Phys: {dev.phys}")
+        
+        while True:
+            try:
+                selection = input(f"\nSelect keyboard index (0-{len(candidates)-1}): ")
+                idx = int(selection)
+                if 0 <= idx < len(candidates):
+                    # Close the ones we didn't pick
+                    chosen = candidates[idx]
+                    for i, dev in enumerate(candidates):
+                        if i != idx:
+                            dev.close()
+                    return chosen
+                print("Invalid index.")
+            except ValueError:
+                print("Please enter a number.")
+            except KeyboardInterrupt:
+                return None 
 
     def start(self, loop, on_key, on_quit) -> None:
-        if not sys.platform.startswith("linux"):
-            raise RuntimeError("Evdev backend is Linux-only.")
-
-        try:
-            from evdev import ecodes  # type: ignore
-        except Exception as e:
-            raise RuntimeError("python-evdev is not installed.") from e
-
-        dev = self._pick_keyboard()
-        if dev is None:
-            raise RuntimeError("No keyboard input device found via evdev.")
-
-        self._dev = dev
-        print(f"Keyboard input: {dev.path} ({dev.name})")
-
-        # Best effort: grab exclusive access so the terminal doesn't also consume keys
-        try:
-            dev.grab()
-        except Exception:
-            pass
-
+        from evdev import ecodes
+        self._dev = self._pick_keyboard()
+        if not self._dev: raise RuntimeError("No keyboard selected.")
+        
+        # REMOVE OR COMMENT OUT THE LINE BELOW:
+        # self._dev.grab()  <-- This is what freezes your trackpad/mouse
+        
         keymap = {
-            ecodes.KEY_W: 'w',
-            ecodes.KEY_A: 'a',
-            ecodes.KEY_S: 's',
-            ecodes.KEY_D: 'd',
-            ecodes.KEY_Q: 'q',
-            ecodes.KEY_ESC: 'q',
+            ecodes.KEY_W: 'w', ecodes.KEY_A: 'a', 
+            ecodes.KEY_S: 's', ecodes.KEY_D: 'd',
+            ecodes.KEY_Q: 'q', ecodes.KEY_ESC: 'q'
         }
 
         def run():
             try:
-                for event in dev.read_loop():
-                    if self._stop.is_set():
-                        break
-                    if event.type != ecodes.EV_KEY:
-                        continue
-                    if event.code not in keymap:
-                        continue
-                    k = keymap[event.code]
-                    down = (event.value != 0)  # 1=down, 0=up, 2=repeat/hold
-                    if k == 'q' and down:
-                        loop.call_soon_threadsafe(on_quit)
-                        break
-                    loop.call_soon_threadsafe(on_key, k, down)
-            except OSError:
-                # Device closed
-                pass
-            except Exception:
-                pass
+                for event in self._dev.read_loop():
+                    if self._stop.is_set(): break
+                    if event.type == ecodes.EV_KEY:
+                        if event.code in keymap:
+                            if event.value == 2: continue # Ignore repeat events
+                            k = keymap[event.code]
+                            down = (event.value == 1)
+                            if k == 'q' and down: 
+                                loop.call_soon_threadsafe(on_quit)
+                                break
+                            loop.call_soon_threadsafe(on_key, k, down)
+            except Exception: pass
 
         self._thread = threading.Thread(target=run, daemon=True)
-        self._thread.start()
+        self._thread.start() 
 
     def stop(self) -> None:
         self._stop.set()
