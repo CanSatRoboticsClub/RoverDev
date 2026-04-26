@@ -1,7 +1,7 @@
 /* btstack_config.h – Complete config for Pico W BLE GATT Server */
 
-#ifndef __BTSTACK_CONFIG
-#define __BTSTACK_CONFIG
+#ifndef BTSTACK_CONFIG_H
+#define BTSTACK_CONFIG_H
 
 // Core BLE functionality
 #define ENABLE_BLE
@@ -30,7 +30,6 @@
 #define MAX_NR_LE_DEVICE_DB_ENTRIES 1
 
 // ATT Server configuration
-#define MAX_NR_ATT_SERVER_CLIENTS 1
 #define ATT_SERVER_MAX_PREPARE_WRITE_REQUESTS 4
 
 // Logging

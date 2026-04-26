@@ -4,6 +4,10 @@
 #include "sd_driver/spi.h"
 #include "hardware/spi.h"
 
+// include project-wide assertion macro
+#include "../ManualControl/project_assert.h"
+
+
 // SPI0 pins (Pico GPIO numbers)
 #define SD_SPI        spi0
 #define SD_MISO_GPIO  16
@@ -41,6 +45,12 @@ static sd_card_t sd_cards[] = {
 
 // Required by the library:
 size_t spi_get_num(void) { return sizeof(spis)/sizeof(spis[0]); }
-spi_t*  spi_get_by_num(size_t num) { return (num < spi_get_num()) ? &spis[num] : NULL; }
+spi_t* spi_get_by_num(size_t num) {
+    if (!c_assert(num < spi_get_num())) return NULL;
+    return &spis[num];
+}
 size_t sd_get_num(void)  { return sizeof(sd_cards)/sizeof(sd_cards[0]); }
-sd_card_t* sd_get_by_num(size_t num) { return (num < sd_get_num()) ? &sd_cards[num] : NULL; }
+sd_card_t* sd_get_by_num(size_t num) {
+    if (!c_assert(num < sd_get_num())) return NULL;
+    return &sd_cards[num];
+}

@@ -9,6 +9,7 @@
 #include "btstack_run_loop.h"
 #include "att_db_util.h"
 #include "PWMmotorDriver.h"
+#include "project_assert.h"
 
 #define m1_IN1 13
 #define m1_IN2 15
@@ -48,15 +49,18 @@ static uint16_t pending_len = 0;
 
 
 static float constrainFloat(float x, float min, float max) {
+    if (!c_assert(min <= max)) return 0.0f;
     return ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)));
 }
 
 static float absFloat(float x) {
+    if (!c_assert(isfinite(x))) return 0.0f;
     return((x) < (0.0) ? (x * -1.0) : (x));
 }
 
 static void queue_note(const char *s){
-    if (!s) return;
+    if (!c_assert(s != NULL)) return;
+    if (!c_assert(strlen(s) > 0)) return;
     if (connection_handle == HCI_CON_HANDLE_INVALID || !notify_enabled) return;
     if (pending_len) return;
     size_t n = strlen(s);
@@ -68,6 +72,8 @@ static void queue_note(const char *s){
 
 
 static void update_motors(void){
+    if (!c_assert(min_DC >= 0.0f)) return;
+    if (!c_assert(max_DC <= 1.0f)) return;
     float u_l = 0.0;
     float u_r = 0.0;
     
@@ -137,12 +143,14 @@ static void restart_stream_timer(void){
 
 static void stream_cb(btstack_timer_source_t *ts){
     (void)ts;
-    if (notify_enabled && connection_handle != HCI_CON_HANDLE_INVALID){
-        char line[MSG_MAX];
-        snprintf(line, sizeof(line), "W:%d A:%d S:%d D:%d\n", 
-                 cmd_w ? 1 : 0, cmd_a ? 1 : 0, cmd_s ? 1 : 0, cmd_d ? 1 : 0);
-        queue_note(line);
-    }
+    
+    if (!c_assert(connection_handle != HCI_CON_HANDLE_INVALID)) return;
+    if (!c_assert(notify_enabled)) return;
+
+    char line[MSG_MAX];
+    snprintf(line, sizeof(line), "W:%d A:%d S:%d D:%d\n", 
+                cmd_w ? 1 : 0, cmd_a ? 1 : 0, cmd_s ? 1 : 0, cmd_d ? 1 : 0);
+    queue_note(line);
     restart_stream_timer();
 }
 
@@ -163,16 +171,18 @@ static uint8_t scan_resp[] = {
 static uint16_t att_read_cb(hci_con_handle_t con_handle, uint16_t att_handle, uint16_t offset,
                             uint8_t *buffer, uint16_t buffer_size){
     (void)con_handle; (void)att_handle; (void)offset;
-    if (buffer && buffer_size){
-        buffer[0] = 0x00;
-        return 1;
-    }
-    return 0;
+    if (!c_assert(buffer != NULL)) return 0;
+    if (!c_assert(buffer_size >= 1)) return 0;
+    buffer[0] = 0x00;
+    return 1;
 }
 
 static int att_write_cb(hci_con_handle_t con_handle, uint16_t att_handle, uint16_t transaction_mode,
                         uint16_t offset, uint8_t *data, uint16_t len){
     (void)con_handle; (void)transaction_mode; (void)offset;
+
+    if (!c_assert(data != NULL)) return 0;
+    if (!c_assert(len <= 120)) return 0;
 
     if (att_handle == notify_cccd_handle){
         int en = 0;
@@ -191,8 +201,6 @@ static int att_write_cb(hci_con_handle_t con_handle, uint16_t att_handle, uint16
     }
 
     if (att_handle == write_val_handle){
-        if (len == 0 || len > 120) return 0;
-
         char cmd[128];
         memcpy(cmd, data, len); 
         cmd[len] = '\0';
@@ -216,6 +224,8 @@ static int att_write_cb(hci_con_handle_t con_handle, uint16_t att_handle, uint16
 
 static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
     (void)channel; (void)size;
+    if (!c_assert(packet != NULL)) return;
+    if (!c_assert(size > 0)) return;
     if (packet_type != HCI_EVENT_PACKET) return;
 
     switch (hci_event_packet_get_type(packet)){
@@ -292,6 +302,7 @@ static void build_gatt(void){
         ATT_SECURITY_NONE, ATT_SECURITY_NONE,
         init_notify_val, sizeof(init_notify_val)
     );
+    if (!c_assert(notify_val_handle != 0)) return;
     notify_cccd_handle = (uint16_t)(notify_val_handle + 1);
 
 
@@ -301,6 +312,7 @@ static void build_gatt(void){
         ATT_SECURITY_NONE, ATT_SECURITY_NONE,
         NULL, 0
     );
+    if (!c_assert(write_val_handle != 0)) return;
 }
 
 int main(void){

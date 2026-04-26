@@ -5,6 +5,9 @@ static bool configured_slices[8] = {false, false, false, false, false, false, fa
 static uint16_t wrap_val = 99;
 
 void addPins(struct motor* motor_pins, uint IN1, uint IN2) {
+    if (!motor_pins) return;
+    if (IN1 > 29 || IN2 > 29) return;
+
     uint IN1_slice = pwm_gpio_to_slice_num(IN1);
     uint IN2_slice = pwm_gpio_to_slice_num(IN2);
 
@@ -34,6 +37,9 @@ void addPins(struct motor* motor_pins, uint IN1, uint IN2) {
 }
 
 void setMotorPWM(struct motor* motor_pins, float duty_cycle, bool forward) {
+    if (!motor_pins) return;
+    if (duty_cycle < 0.0f || duty_cycle > 1.0f) return;
+
     uint16_t level = (uint16_t)(duty_cycle * motor_pins->wrap);
 
     if (forward) {
