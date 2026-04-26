@@ -13,6 +13,8 @@
 #include "sd_card.h"
 #include "LoRa.h"
 
+#include "../ManualControl/project_assert.h"
+
 FATFS fs;
 FIL file;
 
@@ -38,6 +40,11 @@ void setTarget() {
     target_lon.arcmin = 0.0;
     target_lon.arcsec = 0.0;
     target_lon.deg_dec = target_lon.deg + (float)(target_lon.arcmin * 1/60) + (float)(target_lon.arcsec * 1/3600);
+
+    // Latitude check (within -90 to 90)
+    if (!c_assert(target_lat.deg_dec >= -90.0f && target_lat.deg_dec <= 90.0f)) return;
+    // Longitude check (within -180 to 180)
+    if (!c_assert(target_lon.deg_dec >= -180.0f && target_lon.deg_dec <= 180.0f)) return;
 }
 // --------------------------------------------------------------------------------------------------------------
 
@@ -46,11 +53,11 @@ void setTarget() {
 #endif
 
 #ifndef DEG_TO_RAD
-#define DEG_TO_RAD PI / 180.0f
+#define DEG_TO_RAD (PI / 180.0f)
 #endif
 
 #ifndef RAD_TO_DEG
-#define RAD_TO_DEG 180.0f / PI
+#define RAD_TO_DEG (180.0f / PI)
 #endif
 
 #define UART_ID uart1
@@ -75,7 +82,7 @@ void setTarget() {
 #define m2_IN2 7
 #define min_DC 0.4
 #define max_DC 1.0
-#define find_heading_time 2 * 1e6 // us
+#define find_heading_time (2 * 1e6) // us
 
 #define servo_pin 0
 #define servo_ticks 21
@@ -83,10 +90,10 @@ void setTarget() {
 #define control_log_rate 2 // Hz
 
 #define accel_fall_thres 0.4
-#define fall_time_thres_us 0.5*1e6 // us
+#define fall_time_thres_us (0.5*1e6) // us
 #define acc_landed_a 0.9
 #define acc_landed_b 1.1
-#define landed_time_thres_us 0.5 * 1e6 // us
+#define landed_time_thres_us (0.5 * 1e6) // us
 
 #define CS_pin 9
 #define RST_pin 8
@@ -94,10 +101,10 @@ void setTarget() {
 #define SCK_pin 14
 #define MOSI_pin 11
 #define MISO_pin 12
-#define Tx_interval 2 * 1e6 // us
-#define LoRa_freq 915 * 1e6 // Hz
+#define Tx_interval (2 * 1e6) // us
+#define LoRa_freq (915 * 1e6) // Hz
 #define LoRa_sprd_factor 10 //12
-#define LoRa_bw 125 * 1e3 //7.8 * 1e3
+#define LoRa_bw (125 * 1e3) //7.8 * 1e3
 #define LoRa_cdng_rt 6//8
 #define LoRa_tx_pwr 20
 #define LoRa_use_PA_bst 1
@@ -155,22 +162,29 @@ const char *hdr = "TOW,control_dt,heading,lat,lon,alt,dN,dE\r\n";
 
 // Controller Funcs -------------------------------------------------------------------------------
 static float shortestRotation(float x) {
+    if (!c_assert(isfinite(x))) return 0.0f;
 	return((x) > (PI) ? (x - 2 * PI): (x) < (-PI) ? (x + 2 * PI): (x));
 }
 
 static float constrainFloat(float x, float min, float max) {
+    if (!c_assert(min <= max)) return min;
+    if (!c_assert(isfinite(x))) return min;
 	return ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)));
 }
 
 static float max(float a, float b) {
+    if (!c_assert(isfinite(a))) return b;
+    if (!c_assert(isfinite(b))) return a;
     return((a) < (b) ? (b): (a));
 }
 
 static float absFloat(float x) {
+    if (!c_assert(isfinite(x))) return 0.0f;
     return((x) < (0.0) ? (x * -1.0) : (x));
 }
 
 static float boundTo2Pi(float x) {
+    if (!c_assert(isfinite(x))) return 0.0f;
     return((x) > (2 * PI) ? (x - 2 * PI): (x) < (0.0f) ? (x + 2 * PI): (x));
 }
 
@@ -193,6 +207,9 @@ float calcT(float target_heading, float current_heading) {
 }
 
 void control(float target_heading, float current_heading) {
+    if (!c_assert(isfinite(target_heading))) return 0.0f;
+    if (!c_assert(isfinite(current_heading))) return 0.0f;
+
     T = calcT(target_heading, current_heading);
     u_l_internal = Vforward + T;
     u_r_internal = Vforward - T;
@@ -208,6 +225,9 @@ void control(float target_heading, float current_heading) {
 }
 // SPI Funcs --------------------------------------------------------------------------------------
 void pico_spi_transfer(void* user, const uint8_t* tx, uint8_t* rx, size_t n) {
+    if (!c_assert(user != NULL)) return;
+    if (!c_assert(n > 0)) return;
+
     pico_spi_context_t* ctx = (pico_spi_context_t* )user;
     spi_inst_t* spi = ctx->spi;
 
@@ -223,6 +243,7 @@ void pico_spi_transfer(void* user, const uint8_t* tx, uint8_t* rx, size_t n) {
 }
 
 void pico_cs_set(void* user, bool active) {
+    if (!c_assert(user != NULL)) return;
     pico_spi_context_t* ctx = (pico_spi_context_t* )user;
     gpio_put(ctx->cs_pin, active ? 0 : 1);
 }
@@ -232,14 +253,18 @@ void pico_delay_ms(void* user, uint32_t ms) {
 }
 
 void pico_gpio_write(void* user, int pin, bool level) {
+    if (!c_assert(pin >= 0 && pin <= 29)) return;
     gpio_put(pin, level);
 }
 
 bool pico_gpio_read(void* user, int pin) {
+    if (!c_assert(pin >= 0 && pin <= 29)) return false;
     return gpio_get(pin);
 }
 
 void pico_spi_set_frequency(void* user, uint32_t hz) {
+    if (!c_assert(user != NULL)) return;
+    if (!c_assert(hz > 0)) return;
     pico_spi_context_t* ctx = (pico_spi_context_t* )user;
     spi_set_baudrate(ctx->spi, hz);
 }
@@ -262,6 +287,8 @@ lora_hal_t pico_hal = {
 LoRa* lora;
 
 void LoRa_transmit(float lat, float lon) {
+    if (!c_assert(lat >= -90.0f && lat <= 90.0f)) return;
+    if (!c_assert(lon >= -180.0f && lon <= 180.0f)) return;
     char payload[30];
     snprintf(payload, sizeof(payload), "%f,%f", lat, lon);
 
@@ -285,6 +312,10 @@ static void log_line(
     float dN,
     float dE
     ) {
+
+    if (!c_assert(f != NULL)) return;
+    if (!c_assert(lat >= -90.0f && lat <= 90.0f)) return;
+
     char line[96];
     int len = snprintf(line, sizeof line, "%lu,%.2f,%.2f,%.2f,%3.7f,%3.7f,%.2f,%.2f,%.2f\r\n",
                        (unsigned long)TOW, dt_log, heading, dest_heading, lat, lon, alt, dN, dE);
@@ -294,6 +325,10 @@ static void log_line(
 }
 
 void config_servo(struct servoPWM* servo) {
+    if (!c_assert(servo != NULL)) return;
+    // servo->pin is a uint so can't be negative
+    if (!c_assert(servo->pin <= 29)) return;
+
     gpio_set_function(servo->pin, GPIO_FUNC_PWM);
     servo->slice = pwm_gpio_to_slice_num(servo->pin);
     pwm_set_wrap(servo->slice, 20000 - 1);
@@ -303,11 +338,15 @@ void config_servo(struct servoPWM* servo) {
 }
 
 void set_servo(struct servoPWM* servo, int deg) {
+    if (!c_assert(servo != NULL)) return;
+    if (!c_assert(deg >= 0 && deg <= 180)) return;
     int flip_val = (int)(800 + 7.78 * deg);
     pwm_set_chan_level(servo->slice, servo->chan, flip_val);
 }
 
 void release_servo(struct servoPWM* servo) {
+    if (!c_assert(servo != NULL)) return;
+    if (!c_assert(servo_ticks > 0)) return;
     int tick_speed = 300;
 
     for (int i = 0; i < servo_ticks; i++) {
@@ -318,6 +357,9 @@ void release_servo(struct servoPWM* servo) {
 }
 
 bool landed() {
+    if (!c_assert(isfinite(accel_data[0]))) return false;
+    if (!c_assert(isfinite(accel_data[1]))) return false;
+
     float amag = sqrt(accel_data[0] * accel_data[0] + accel_data[1] * accel_data[1] + accel_data[2] * accel_data[2]);
     
     bool accel_freefall = amag < accel_fall_thres;
@@ -357,6 +399,8 @@ bool repeating_imu_cb(__unused struct repeating_timer *t) {
 }
 
 void findHeading() {
+    if (!c_assert(find_heading_time > 0)) return;
+
     absolute_time_t start_time = get_absolute_time();
     absolute_time_t last_toggle = get_absolute_time();
     uint64_t toggle_time = 0.1 * 1e6; // us 
@@ -378,24 +422,18 @@ void findHeading() {
     }
 }
 
-int main()
-{
-// PRE LAUNCH CODE ----------------------------------------------------------------------------------------------
-    stdio_init_all();
-    sleep_ms(2000);
+// everything below this point was pulled out of main() to reduce
+// main size and make testing easier
 
-    printf("Hello! Starting configuration and pre flight checks!\n");
-    sleep_ms(1000);
-
-    setTarget();
-    printf("Target location set!\n");
-    sleep_ms(500);
-
+static int init_uart(void) {
     printf("Initializing uart...\n");
     uart_init(UART_ID, BAUD_RATE);
     gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
+    return 0;
+}
 
+static int init_imu_bus(void) {
     printf("Initializing mpu6050...\n");
     mpu6050_setdevparams(i2c_dev, mpu_addr);
     i2c_init(i2c_dev, 100 * 1000);
@@ -403,7 +441,10 @@ int main()
     gpio_set_function(i2c_dev_SCL, GPIO_FUNC_I2C);
     gpio_pull_up(i2c_dev_SDA);
     gpio_pull_up(i2c_dev_SCL);
+    return 0;
+}
 
+static int init_lora(void) {
     printf("Setting up LoRa transmitter...\n");
 
     spi_init(spi1, 8 * 1e6);
@@ -424,77 +465,109 @@ int main()
 
     printf("Creating LoRa instance...\n");
     lora = lora_create(&pico_hal, CS_pin, RST_pin, IRQ_pin);
-    if (!lora) {
-        printf("Failed to create LoRa instance!!\n");
-        while (1) tight_loop_contents();
-    }
+    if (!c_assert(lora != NULL)) return -1;
 
     printf("Configuring LoRa settings...\n");
     lora_set_spreading_factor(lora, LoRa_sprd_factor);
-    lora_set_signal_bandwidth(lora, LoRa_bw); // 7.8kHz
+    lora_set_signal_bandwidth(lora, LoRa_bw);
     lora_set_coding_rate4(lora, LoRa_cdng_rt);
-    lora_set_tx_power(lora, LoRa_tx_pwr, LoRa_use_PA_bst); // 20dBm, PA_BOOST
+    lora_set_tx_power(lora, LoRa_tx_pwr, LoRa_use_PA_bst);
     lora_set_preamble_length(lora, LoRa_preamble_len);
     lora_set_sync_word(lora, LoRa_sync_wrd);
 
     printf("Initializing LoRa...\n");
-    while (!lora_begin(lora, LoRa_freq)) {
-        printf("Failed to initialize LoRa!\n");
-        while (1) tight_loop_contents();
-    }
+    if (!c_assert(lora_begin(lora, LoRa_freq))) return -1;
+    return 0;
+}
 
+static int init_imu_sensor(void) {
     printf("Waking mpu6050...\n");
     mpu6050_wake(true);
     mpu6050_ping();
     printf("Configuring mpu6050...\n");
     mpu6050_configure(3, 3);
+    return 0;
+}
+
+static int init_motors(void) {
+    printf("Configuring motor PWM...\n");
+    addPins(&MotorRight, m1_IN1, m1_IN2);
+    addPins(&MotorLeft, m2_IN1, m2_IN2);
+    return 0;
+}
+
+static int init_servo(void) {
+    printf("Configuring Servo PWM...\n");
+    parachute_servo.pin = servo_pin;
+    config_servo(&parachute_servo);
+    return 0;
+}
+
+static int init_sd_logging(void) {
+    printf("Mounting SD Card...\n");
+    if (!c_assert(sd_init_driver())) return -1;
+    if (!c_assert(f_mount(&fs, "0:", 1) == FR_OK)) return -1;
+
+    printf("Opening log file...\n");
+    FRESULT fr = f_open(&file, "CtrlLog.csv", FA_WRITE | FA_CREATE_ALWAYS);
+    if (!c_assert(fr == FR_OK)) return -1;
+
+    if (f_size(&file) == 0) {
+        UINT bw;
+        f_write(&file, hdr, (UINT)strlen(hdr), &bw);
+        f_sync(&file);
+    } else {
+        printf("File seems to have data in it already!\n");
+        return -1;
+    }
+
+    printf("Control log created.\n");
+    return 0;
+}
+
+static void wait_for_gps_fix(void) {
+    printf("Everything is configured!\n");
+    printf("Checking GPS status now...\n");
+    sleep_ms(1000);
+
+    while (!posllhChanged() || !status.gpsFixOk) {
+        while (uart_is_readable(UART_ID)) {
+            addByte(uart_getc(UART_ID));
+        }
+        printf("[posllh: %d, fix: %d, fix type: %d] Waiting for GPS fix..\n",
+               posllhChanged(), status.gpsFixOk, status.gpsFix);
+        if (statusChanged()) { status = getSTATUS(); }
+    }
+    printf("GPS Fix good!\n");
+}
+
+int main()
+{
+// PRE LAUNCH CODE ----------------------------------------------------------------------------------------------
+    stdio_init_all();
+    sleep_ms(2000);
+
+    printf("Hello! Starting configuration and pre flight checks!\n");
+    sleep_ms(1000);
+
+    setTarget();
+    printf("Target location set!\n");
+    sleep_ms(500);
+
+    if (!c_assert(init_uart() == 0)) return 1;
+    if (!c_assert(init_imu_bus() == 0)) return 1;
+    if (!c_assert(init_lora() == 0)) return 1;
+    if (!c_assert(init_imu_sensor() == 0)) return 1;
 
     printf("Starting mpu6050 timer and callback\n");
     struct repeating_timer imu_timer; 
     add_repeating_timer_us((int)(1e6 / imu_polling), repeating_imu_cb, NULL, &imu_timer);
 
-    printf("Configuring motor PWM...\n");
-    addPins(&MotorRight, m1_IN1, m1_IN2);
-    addPins(&MotorLeft, m2_IN1, m2_IN2);
+    if (!c_assert(init_motors() == 0)) return 1;
+    if (!c_assert(init_servo() == 0)) return 1;
+    if (!c_assert(init_sd_logging() == 0)) return 1;
 
-    printf("Configuring Servo PWM...\n");
-    parachute_servo.pin = servo_pin;
-    config_servo(&parachute_servo);
-
-    printf("Mounting SD Card...\n");
-    if (!sd_init_driver()) { while (1) tight_loop_contents(); }
-    if (f_mount(&fs, "0:", 1) != FR_OK) { while (1) tight_loop_contents(); }
-
-    printf("Opening log file...\n");
-    FRESULT fr = f_open(&file, "CtrlLog.csv", FA_WRITE | FA_CREATE_ALWAYS);
-    if (fr != FR_OK) { while (1) tight_loop_contents(); }
-
-    if (f_size(&file) == 0) {
-        UINT bw; 
-        f_write(&file, hdr, (UINT)strlen(hdr), &bw);
-        f_sync(&file);
-    }
-    else {
-        printf("File seems to have data in it already!\n");
-        while (1) tight_loop_contents();
-    }
-
-    printf("Control log created.\n");
-
-    printf("Everything is configured!\n");
-    printf("Checking GPS status now...\n");
-
-    sleep_ms(1000);
-
-    while (!posllhChanged() || !status.gpsFixOk) {
-        while(uart_is_readable(UART_ID)) { 
-            addByte(uart_getc(UART_ID)); 
-        }
-        printf("[posllh: %d, fix: %d, fix type: %d] Waiting for GPS fix..\n", posllhChanged(), status.gpsFixOk, status.gpsFix);
-        if (statusChanged()) {status = getSTATUS();}
-    }
-    printf("GPS Fix good!\n");
-
+    wait_for_gps_fix();
 // END PRE LAUNCH -----------------------------------------------------------------------------------------------
     printf("I am ready for launch!\n");
 // LOAD INTO ROCKET ---------------------------------------------------------------------------------------------   
